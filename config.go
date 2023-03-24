@@ -47,8 +47,6 @@ type WatchConfig struct {
 var config Config
 
 func (c *Config) load(filename string) (err error) {
-	log.Printf("[설정 파일 불러오기] %s\n", filename)
-
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return
@@ -57,6 +55,7 @@ func (c *Config) load(filename string) (err error) {
 	if err != nil {
 		return
 	}
+	log.Print("[설정] OK\n")
 
 	return nil
 }

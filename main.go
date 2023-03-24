@@ -100,7 +100,7 @@ func (w *Watcher) watch(result chan Email) (err error) {
 			if w.IsFetched {
 				result <- Email{
 					Subject: fmt.Sprintf("[%s] %s 변화", w.UpdatedAt.Format("15:04:05"), w.Url),
-					Content: fmt.Sprintf("아래와 같은 변화가 감지되었습니다.\n\n%s", diffrence),
+					Content: fmt.Sprintf("%s", diffrence),
 				}
 			} else {
 				log.Printf("[등록] %s\r\n", w.Url)
