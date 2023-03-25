@@ -42,7 +42,7 @@ func main() {
 		}
 		watchlist = append(watchlist, &watcher)
 	}
-	err := routine(watchlist)
+	err := async_routine(watchlist)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -101,7 +101,7 @@ func routine(watchlist []*Watcher) (err error) {
 	}
 }
 
-func async_routine(watchlist []Watcher) {
+func async_routine(watchlist []*Watcher) (err error) {
 	var (
 		smtpConfig = config.SMTP
 		user       = smtpConfig.User
@@ -114,7 +114,7 @@ func async_routine(watchlist []Watcher) {
 	resultChannel := make(chan Email)
 	quit := make(chan bool)
 	for _, watcher := range watchlist {
-		go func(watcher Watcher) {
+		go func(watcher *Watcher) {
 			err := watcher.watch(resultChannel)
 			if err != nil {
 				log.Fatal(err)
@@ -131,7 +131,7 @@ func async_routine(watchlist []Watcher) {
 			err := smtp.SendMail(host+":"+port, auth, from, to, []byte(body))
 			if err != nil {
 				log.Fatal(err)
-				return
+				return err
 			}
 		case <-quit:
 			log.Println("quit")
