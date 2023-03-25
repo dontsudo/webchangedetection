@@ -27,18 +27,9 @@ type Email struct {
 
 func main() {
 	config.load("config.json")
-	var (
-		smtpConfig  = config.SMTP
-		watchConfig = config.Watch
-		user        = smtpConfig.User
-		pass        = smtpConfig.Pass
-		host        = smtpConfig.Host
-		port        = smtpConfig.Port
-		from        = smtpConfig.From
-		to          = smtpConfig.To
-	)
+	var watchConfig = config.Watch
 
-	watchlist := []Watcher{}
+	watchlist := []*Watcher{}
 	for _, watch := range watchConfig {
 		watcher := Watcher{
 			Url:       watch.Url,
@@ -49,8 +40,77 @@ func main() {
 		if watcher.Css == "" {
 			watcher.Css = "body"
 		}
-		watchlist = append(watchlist, watcher)
+		watchlist = append(watchlist, &watcher)
 	}
+	err := routine(watchlist)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+}
+
+func routine(watchlist []*Watcher) (err error) {
+	/**
+	 * 요청 과다를 막기 위한 sync 방법 (monkeypatch)
+	 */
+	var (
+		smtpConfig = config.SMTP
+		user       = smtpConfig.User
+		pass       = smtpConfig.Pass
+		host       = smtpConfig.Host
+		port       = smtpConfig.Port
+		from       = smtpConfig.From
+		to         = smtpConfig.To
+	)
+	for {
+		var changedList = []*Watcher{}
+		for _, w := range watchlist {
+			html, err := w.fetch()
+			if err != nil {
+				return err
+			}
+			if w.Html != html {
+				w.Html = html
+				w.UpdatedAt = time.Now()
+				if w.IsFetched {
+					changedList = append(changedList, w)
+				} else {
+					log.Printf("[등록] %s\r\n", w.Url)
+					w.IsFetched = true
+				}
+			}
+		}
+		if len(changedList) > 0 {
+			email := Email{
+				Subject: fmt.Sprintf("[%s] %s 등 %d개",
+					changedList[0].UpdatedAt.Format("15:04:05"), changedList[0].Url, len(changedList)),
+				Content: "감지된 사이트 목록\r\n",
+			}
+			for _, changed := range changedList {
+				email.Content += changed.UpdatedAt.Format("15:04:05") + " - " + changed.Url + "\r\n"
+			}
+			log.Printf("%s\r\n", email.Subject)
+			auth := smtp.PlainAuth("", user, pass, host)
+			body := fmt.Sprintf("From: %s\r\nSubject: %s\r\n\r\n%s", from, email.Subject, email.Content)
+			err = smtp.SendMail(host+":"+port, auth, from, to, []byte(body))
+			if err != nil {
+				return err
+			}
+		}
+		time.Sleep(time.Duration(config.DelayTime) * time.Minute)
+	}
+}
+
+func async_routine(watchlist []Watcher) {
+	var (
+		smtpConfig = config.SMTP
+		user       = smtpConfig.User
+		pass       = smtpConfig.Pass
+		host       = smtpConfig.Host
+		port       = smtpConfig.Port
+		from       = smtpConfig.From
+		to         = smtpConfig.To
+	)
 	resultChannel := make(chan Email)
 	quit := make(chan bool)
 	for _, watcher := range watchlist {
@@ -67,9 +127,8 @@ func main() {
 		case email := <-resultChannel:
 			log.Printf("%s\r\n", email.Subject)
 			auth := smtp.PlainAuth("", user, pass, host)
-			message := fmt.Sprintf(
-				"From: %s\r\nSubject: %s\r\n\r\n%s", from, email.Subject, email.Content)
-			err := smtp.SendMail(host+":"+port, auth, from, to, []byte(message))
+			body := fmt.Sprintf("From: %s\r\nSubject: %s\r\n\r\n%s", from, email.Subject, email.Content)
+			err := smtp.SendMail(host+":"+port, auth, from, to, []byte(body))
 			if err != nil {
 				log.Fatal(err)
 				return
